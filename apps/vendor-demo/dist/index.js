@@ -4,7 +4,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const node_fetch_1 = __importDefault(require("node-fetch"));
 const node_crypto_1 = __importDefault(require("node:crypto"));
 require("dotenv/config");
 const app = (0, express_1.default)();
@@ -33,9 +32,13 @@ function x402(price_cents) {
         }
         const ref = buildRef(userId, req.path);
         console.log(`➡️ Checking credit for ${userId} @ ${ref}`);
+        const fetchFn = globalThis.fetch;
+        if (!fetchFn) {
+            throw new Error("Fetch API unavailable. Please run on Node 18+.");
+        }
         let r;
         try {
-            r = await (0, node_fetch_1.default)(GATEWAY_DEDUCT_URL, {
+            r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ userId, ref, amount_cents: price_cents }),

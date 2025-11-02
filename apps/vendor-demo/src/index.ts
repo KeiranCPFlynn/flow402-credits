@@ -3,7 +3,6 @@ import express, {
     Response as ExpressResponse,
     NextFunction,
 } from "express";
-import fetch, { Response as FetchResponse } from "node-fetch";
 import crypto from "node:crypto";
 import "dotenv/config";
 
@@ -39,9 +38,14 @@ function x402(price_cents: number) {
         const ref = buildRef(userId, req.path);
         console.log(`➡️ Checking credit for ${userId} @ ${ref}`);
 
-        let r: FetchResponse;
+        const fetchFn = globalThis.fetch;
+        if (!fetchFn) {
+            throw new Error("Fetch API unavailable. Please run on Node 18+.");
+        }
+
+        let r: Response;
         try {
-            r = await fetch(GATEWAY_DEDUCT_URL, {
+            r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ userId, ref, amount_cents: price_cents }),
