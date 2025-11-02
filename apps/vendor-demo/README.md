@@ -9,7 +9,7 @@
 1. Create a new App Platform service and point it at this repository.
 2. In the “Source” tab, set the working directory to `apps/vendor-demo`.
 3. Use Node.js 20 or later.
-4. Configure the build command as `corepack enable && pnpm install --prod --no-frozen-lockfile && pnpm run build`.
+4. Configure the build command as `corepack enable && pnpm install --no-frozen-lockfile && pnpm run build`.
 5. Configure the run command as `pnpm run start`.
 6. Add the `GATEWAY_DEDUCT_URL` environment variable pointing at your Flow402 gateway endpoint.
 
