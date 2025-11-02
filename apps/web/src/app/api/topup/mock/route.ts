@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
         // ✅ Use NEXT_PUBLIC_ vars for Supabase URL, and server-side SERVICE_ROLE key
         const supabase = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE!
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
 
         // Call your SQL function to increment balance
