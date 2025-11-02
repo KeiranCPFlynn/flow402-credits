@@ -1,4 +1,12 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rootDirectory": "apps/web"
+  "version": 2,
+  "builds": [
+    {
+      "src": "apps/web/next.config.ts",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "apps/web/$1" }
+  ]
 }
