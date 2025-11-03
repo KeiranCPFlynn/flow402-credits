@@ -9,16 +9,20 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
-    // DEBUG - Log what env vars are available
-    console.log("=== ENV VAR CHECK ===");
-    console.log("NEXT_PUBLIC_SUPABASE_URL exists:", !!process.env.NEXT_PUBLIC_SUPABASE_URL);
-    console.log("SUPABASE_SERVICE_ROLE_KEY exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
-    console.log("NEXT_PUBLIC_SUPABASE_URL value:", process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 20) + "...");
+    // DEBUG - Must be FIRST thing in the function
+    console.log("=== TOPUP API CALLED ===");
+    console.log("ENV check:", {
+        url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        serviceKeyLength: process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
+        allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
+    });
 
     try {
         const { userId, amount_cents } = Body.parse(await req.json());
 
-        // ✅ Use NEXT_PUBLIC_ vars for Supabase URL, and server-side SERVICE_ROLE key
+        console.log("Creating Supabase client...");
+
         const supabase = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!
