@@ -9,6 +9,12 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+    // DEBUG - Log what env vars are available
+    console.log("=== ENV VAR CHECK ===");
+    console.log("NEXT_PUBLIC_SUPABASE_URL exists:", !!process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.log("SUPABASE_SERVICE_ROLE_KEY exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.log("NEXT_PUBLIC_SUPABASE_URL value:", process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 20) + "...");
+
     try {
         const { userId, amount_cents } = Body.parse(await req.json());
 
