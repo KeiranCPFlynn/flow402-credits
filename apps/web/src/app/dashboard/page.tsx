@@ -11,6 +11,15 @@ export default function DashboardPage() {
     const [balance, setBalance] = useState<number>(0);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [amount, setAmount] = useState<string>("5");
+    const [isResetting, setIsResetting] = useState(false);
+    const [isCharging, setIsCharging] = useState(false);
+    const [actionMessage, setActionMessage] = useState<string | null>(null);
+    const [chargeResult, setChargeResult] = useState<{
+        status: number;
+        ok: boolean;
+        body: unknown;
+        logs: string[];
+    } | null>(null);
     const userId = "9c0383a1-0887-4c0f-98ca-cb71ffc4e76c";
 
     // 🔄 Fetch credits + recent transactions
@@ -66,6 +75,73 @@ export default function DashboardPage() {
         alert(`Added $${numeric.toFixed(2)} credits ✅`);
     };
 
+    const handleReset = async () => {
+        setIsResetting(true);
+        setActionMessage(null);
+
+        try {
+            const res = await fetch("/api/topup/reset", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId }),
+            });
+
+            const json = await res.json();
+            if (!res.ok || !json.ok) {
+                console.error("Reset failed", json);
+                alert("Reset failed");
+                return;
+            }
+
+            await fetchData();
+            setActionMessage(
+                `Balance reset from $${(
+                    (json.previous_balance_cents ?? 0) / 100
+                ).toFixed(2)} to $0.00`
+            );
+        } catch (err) {
+            console.error("Reset error", err);
+            alert("Reset failed");
+        } finally {
+            setIsResetting(false);
+        }
+    };
+
+    const handleChargeSimulation = async () => {
+        setIsCharging(true);
+        setChargeResult(null);
+        setActionMessage(null);
+
+        try {
+            const res = await fetch("/api/demo/charge", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId }),
+            });
+            const json = await res.json();
+
+            setChargeResult({
+                status: json.status ?? res.status,
+                ok: json.ok ?? res.ok,
+                body: json.body ?? null,
+                logs: Array.isArray(json.logs) ? json.logs : [],
+            });
+
+            if (!res.ok) {
+                console.error("Charge simulation failed", json);
+                return;
+            }
+
+            // Refresh balance/transactions so the deduction shows up immediately.
+            await fetchData();
+        } catch (err) {
+            console.error("Charge simulation error", err);
+            alert("Charge simulation failed");
+        } finally {
+            setIsCharging(false);
+        }
+    };
+
     return (
         <main className="min-h-screen bg-gray-50 p-6">
             <div className="max-w-2xl mx-auto">
@@ -98,6 +174,61 @@ export default function DashboardPage() {
                             + Add Credit
                         </button>
                     </form>
+
+                    <button
+                        type="button"
+                        onClick={handleReset}
+                        disabled={isResetting}
+                        className="mt-4 text-sm text-red-600 border border-red-200 rounded-lg px-3 py-2 hover:bg-red-50 disabled:opacity-60"
+                    >
+                        {isResetting ? "Resetting..." : "Reset balance to $0"}
+                    </button>
+
+                    {actionMessage && (
+                        <p className="mt-3 text-sm text-gray-600">{actionMessage}</p>
+                    )}
+                </div>
+
+                <div className="bg-white shadow-md rounded-2xl p-6 mb-6">
+                    <h2 className="text-xl font-semibold text-gray-700 mb-2">Demo Actions</h2>
+                    <p className="text-gray-600 text-sm mb-4">
+                        Trigger the end-to-end flow right from the dashboard. We hit the vendor demo
+                        service, which calls the Flow402 gateway and deducts credits if available.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={handleChargeSimulation}
+                        disabled={isCharging}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg disabled:opacity-60"
+                    >
+                        {isCharging ? "Calling vendor demo..." : "Simulate paid API call"}
+                    </button>
+
+                    {chargeResult && (
+                        <div className="mt-4 text-sm text-gray-700">
+                            <p>
+                                Gateway response:&nbsp;
+                                <span
+                                    className={
+                                        chargeResult.status === 200 ? "text-emerald-600" : "text-amber-600"
+                                    }
+                                >
+                                    {chargeResult.status}
+                                </span>
+                            </p>
+                            {chargeResult.logs?.length > 0 && (
+                                <div className="mt-2">
+                                    <p className="font-medium text-gray-600">Trace</p>
+                                    <pre className="mt-1 bg-gray-100 rounded-lg p-3 overflow-auto text-xs text-gray-600">
+                                        {chargeResult.logs.join("\n")}
+                                    </pre>
+                                </div>
+                            )}
+                            <pre className="mt-2 bg-gray-100 rounded-lg p-3 overflow-auto text-xs text-gray-600">
+                                {JSON.stringify(chargeResult.body, null, 2)}
+                            </pre>
+                        </div>
+                    )}
                 </div>
 
                 <div className="bg-white shadow-md rounded-2xl p-6">

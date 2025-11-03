@@ -30,13 +30,65 @@ function buildRef(userId: string, path: string): string {
  */
 function x402(price_cents: number) {
     return async (req: Request, res: ExpressResponse, next: NextFunction) => {
+        const debugFlag =
+            typeof req.headers["x-debug"] === "string" &&
+            ["1", "true", "yes", "on"].includes(req.headers["x-debug"].toLowerCase());
+        const debugLogs: string[] = [];
+        const pushDebug = (message: string) => {
+            if (debugFlag) {
+                debugLogs.push(message);
+            }
+        };
+        const log = (message: string) => {
+            console.log(message);
+            pushDebug(message);
+        };
+        const warn = (message: string) => {
+            console.warn(message);
+            pushDebug(message);
+        };
+        const error = (message: string, detail?: unknown) => {
+            console.error(message, detail);
+            if (debugFlag) {
+                let detailText = "";
+                if (detail instanceof Error) {
+                    detailText = detail.message;
+                } else if (typeof detail === "string") {
+                    detailText = detail;
+                } else if (detail !== undefined) {
+                    try {
+                        detailText = JSON.stringify(detail);
+                    } catch {
+                        detailText = String(detail);
+                    }
+                }
+                pushDebug(detailText ? `${message} ${detailText}` : message);
+            }
+        };
+        const attachDebug = (payload: unknown) => {
+            if (!debugFlag) return payload;
+            if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+                return { ...(payload as Record<string, unknown>), debug: debugLogs };
+            }
+            return { data: payload, debug: debugLogs };
+        };
+
         const userId = (req.headers["x-user-id"] as string) || "";
         if (!userId) {
-            return res.status(400).json({ error: "x-user-id header required" });
+            pushDebug("x-user-id header missing");
+            return res
+                .status(400)
+                .json(attachDebug({ error: "x-user-id header required" }));
         }
 
         const ref = buildRef(userId, req.path);
-        console.log(`➡️ Checking credit for ${userId} @ ${ref}`);
+        log(`➡️ Checking credit for ${userId} @ ${ref}`);
+
+        if (debugFlag) {
+            res.locals.debugLogs = debugLogs;
+        } else if (res.locals?.debugLogs) {
+            delete res.locals.debugLogs;
+        }
 
         const fetchFn = globalThis.fetch;
         if (!fetchFn) {
@@ -51,13 +103,15 @@ function x402(price_cents: number) {
                 body: JSON.stringify({ userId, ref, amount_cents: price_cents }),
             });
         } catch (err) {
-            console.error("❌ Gateway unreachable:", err);
-            return res.status(500).json({ error: "gateway unreachable" });
+            error("❌ Gateway unreachable:", err);
+            return res
+                .status(500)
+                .json(attachDebug({ error: "gateway unreachable" }));
         }
 
         // ✅ Successful charge
         if (r.status === 200) {
-            console.log("✅ Payment accepted");
+            log("✅ Payment accepted");
             return next();
         }
 
@@ -67,10 +121,10 @@ function x402(price_cents: number) {
             try {
                 json = await r.json();
             } catch {
-                console.warn("⚠️ No JSON body in 402 response");
+                warn("⚠️ No JSON body in 402 response");
             }
-            console.log("💰 Payment required (402)");
-            return res.status(402).json(json);
+            log("💰 Payment required (402)");
+            return res.status(402).json(attachDebug(json));
         }
 
         // ❌ Unexpected response
@@ -80,16 +134,24 @@ function x402(price_cents: number) {
         } catch {
             body = { raw: await r.text() };
         }
-        console.error("❌ Unexpected gateway response:", r.status, body);
-        return res
-            .status(500)
-            .json({ error: "gateway internal error", detail: body });
+        error("❌ Unexpected gateway response:", { status: r.status, body });
+        return res.status(500).json(
+            attachDebug({
+                error: "gateway internal error",
+                detail: body,
+            })
+        );
     };
 }
 
 // Example paid endpoint
 app.get("/demo/screenshot", x402(5), (_req, res) => {
-    res.json({ ok: true, bytes: 12345 });
+    const debugLogs = res.locals?.debugLogs as string[] | undefined;
+    const payload: Record<string, unknown> = { ok: true, bytes: 12345 };
+    if (debugLogs && debugLogs.length > 0) {
+        payload.debug = debugLogs;
+    }
+    res.json(payload);
 });
 
 // Basic health check
