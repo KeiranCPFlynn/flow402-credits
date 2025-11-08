@@ -39,8 +39,9 @@ async function showBalance() {
         return;
     }
 
-    const balanceUsd = (data.balance_cents / 100).toFixed(2);
-    console.log(`💳 Current balance: ${balanceUsd} USDC`);
+    const balanceCredits = data?.balance_cents ?? 0;
+    const balanceUsd = (balanceCredits / 100).toFixed(2);
+    console.log(`💳 Current balance: ${balanceCredits.toLocaleString()} credits (~$${balanceUsd} USDC)`);
 }
 
 // === MAIN LOGIC ===
@@ -62,18 +63,22 @@ async function callVendor() {
     if (res.status === 402) {
         console.log("💰 Received 402 – topping up...");
         const body = (await res.json()) as {
-            price_cents: number;
+            price_credits: number;
             currency: string;
             topup_url?: string;
         };
 
-        const need = body.price_cents * 10; // top up 10× required amount
+        const need = body.price_credits * 10; // top up 10× required amount
         await fetch(GATEWAY_TOPUP_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId: AGENT_USER_ID, amount_cents: need }),
+            body: JSON.stringify({ userId: AGENT_USER_ID, amount_credits: need }),
         });
-        console.log(`🔄 Topped up ${(need / 100).toFixed(2)} USDC credits. Retrying...`);
+        console.log(
+            `🔄 Topped up ${need.toLocaleString()} credits (~$${(need / 100).toFixed(
+                2
+            )} USD). Retrying...`
+        );
         return callVendor();
     }
 

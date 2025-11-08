@@ -11,7 +11,7 @@ const demoUserId =
     process.env.DEMO_USER_ID || "9c0383a1-0887-4c0f-98ca-cb71ffc4e76c";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const autoTopupCredits = Number(process.env.DEMO_TOPUP_CENTS ?? 500);
+const autoTopupCredits = Number(process.env.DEMO_TOPUP_CREDITS ?? 500);
 
 type VendorCall = {
     status: number;

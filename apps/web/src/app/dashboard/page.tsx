@@ -41,8 +41,12 @@ export default function DashboardPage() {
 
         if (txError) console.error("Transactions error:", txError);
 
-        setBalanceCredits(balanceData ? balanceData.balance_cents : 0);
-        setTransactions(txData || []);
+        const latestBalance = balanceData?.balance_cents ?? 0;
+        const normalizedTransactions =
+            txData?.map((tx) => ({ ...tx, amount_credits: tx.amount_cents })) ?? [];
+
+        setBalanceCredits(latestBalance);
+        setTransactions(normalizedTransactions);
     };
 
     useEffect(() => {
@@ -57,11 +61,11 @@ export default function DashboardPage() {
             return;
         }
 
-        const amountCents = Math.round(numeric * 100);
+        const amountCredits = Math.round(numeric * 100);
         const res = await fetch("/api/topup/mock", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId, amount_cents: amountCents }),
+            body: JSON.stringify({ userId, amount_credits: amountCredits }),
         });
 
         if (!res.ok) {
@@ -73,7 +77,7 @@ export default function DashboardPage() {
         await fetchData();
         setAmountUsd("5");
         setActionMessage(
-            `Issued ${amountCents.toLocaleString()} credits ($${numeric.toFixed(2)} USD)`
+            `Issued ${amountCredits.toLocaleString()} credits ($${numeric.toFixed(2)} USD)`
         );
     };
 
@@ -97,7 +101,7 @@ export default function DashboardPage() {
 
             await fetchData();
             setActionMessage(
-                `Balance reset from ${(json.previous_balance_cents ?? 0).toLocaleString()} credits to 0`
+                `Balance reset from ${(json.previous_balance_credits ?? 0).toLocaleString()} credits to 0`
             );
             setChargeResult(null);
         } catch (err) {
@@ -291,7 +295,7 @@ export default function DashboardPage() {
                                                 : tx.kind}
                                         </td>
                                         <td className="py-2 text-gray-700">
-                                            {tx.amount_cents.toLocaleString()}
+                                            {tx.amount_credits.toLocaleString()}
                                         </td>
                                         <td className="py-2 text-gray-500">
                                             {new Date(tx.created_at).toLocaleString()}

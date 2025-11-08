@@ -6,15 +6,15 @@ import { createClient } from "@supabase/supabase-js";
 const Body = z.object({
     userId: z.string().uuid(),
     ref: z.string().min(6),
-    amount_cents: z.number().int().positive(),
+    amount_credits: z.number().int().positive(),
 });
 
 export async function POST(req: NextRequest) {
     console.log("💡 /api/gateway/deduct called");
 
     try {
-        const { userId, ref, amount_cents } = Body.parse(await req.json());
-        console.log("➡️ Request body:", { userId, ref, amount_cents });
+        const { userId, ref, amount_credits } = Body.parse(await req.json());
+        console.log("➡️ Request body:", { userId, ref, amount_credits });
 
         const supabase = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,24 +33,24 @@ export async function POST(req: NextRequest) {
             throw balanceError;
         }
 
-        const current = credit?.balance_cents ?? 0;
-        console.log(`💰 Current balance: ${current} cents`);
+        const currentCredits = credit?.balance_cents ?? 0;
+        console.log(`💰 Current balance: ${currentCredits} credits`);
 
         // Not enough credits → trigger 402 response
-        if (current < amount_cents) {
+        if (currentCredits < amount_credits) {
             console.log("⚠️ Insufficient credits, returning 402");
             return NextResponse.json(
                 {
-                    price_cents: amount_cents,
+                    price_credits: amount_credits,
                     currency: "USDC",
-                    topup_url: `/topup?need=${amount_cents}&user=${userId}`,
+                    topup_url: `/topup?need=${amount_credits}&user=${userId}`,
                 },
                 { status: 402 }
             );
         }
 
         // Deduct credits and insert into ledger
-        const newBalance = current - amount_cents;
+        const newBalance = currentCredits - amount_credits;
 
         const { error: updateError } = await supabase
             .from("credits")
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
         await supabase.from("tx_ledger").insert({
             user_id: userId,
             kind: "deduct",
-            amount_cents,
+            amount_cents: amount_credits,
             ref,
         });
 

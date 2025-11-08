@@ -24,7 +24,7 @@ function buildRef(userId, path) {
 /**
  * Middleware that checks credits and performs deduction
  */
-function x402(price_cents) {
+function x402(priceCredits) {
     return async (req, res, next) => {
         const debugFlag = typeof req.headers["x-debug"] === "string" &&
             ["1", "true", "yes", "on"].includes(req.headers["x-debug"].toLowerCase());
@@ -95,7 +95,11 @@ function x402(price_cents) {
             r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId, ref, amount_cents: price_cents }),
+                body: JSON.stringify({
+                    userId,
+                    ref,
+                    amount_credits: priceCredits,
+                }),
             });
         }
         catch (err) {
