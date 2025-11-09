@@ -9,9 +9,9 @@ const userId = "9c0383a1-0887-4c0f-98ca-cb71ffc4e76c";
 
 describe("Flow402Dal", () => {
     it("guards against negative credit deltas", async () => {
-        const rpcCalls: Array<Parameters<SupabaseClient<unknown>["rpc"]>> = [];
+        const rpcCalls: unknown[] = [];
         const supabase = createSupabaseStub({
-            rpc: async (...args) => {
+            rpc: async (...args: unknown[]) => {
                 rpcCalls.push(args);
                 return { data: null, error: null };
             },
@@ -138,16 +138,16 @@ describe("Flow402Dal", () => {
 });
 
 interface SupabaseOverrides {
-    from?: SupabaseClient<unknown>["from"];
-    rpc?: SupabaseClient<unknown>["rpc"];
+    from?: (...args: unknown[]) => unknown;
+    rpc?: (...args: unknown[]) => unknown;
 }
 
-function createSupabaseStub(overrides: SupabaseOverrides = {}): SupabaseClient<unknown> {
-    const defaultFrom: SupabaseClient<unknown>["from"] = () => {
+function createSupabaseStub(overrides: SupabaseOverrides = {}): SupabaseClient<any> {
+    const defaultFrom = () => {
         throw new Error("Unexpected table access");
     };
 
-    const defaultRpc: SupabaseClient<unknown>["rpc"] = async () => ({
+    const defaultRpc = async () => ({
         data: null,
         error: null,
     });
@@ -155,7 +155,7 @@ function createSupabaseStub(overrides: SupabaseOverrides = {}): SupabaseClient<u
     return {
         from: overrides.from ?? defaultFrom,
         rpc: overrides.rpc ?? defaultRpc,
-    } as unknown as SupabaseClient<unknown>;
+    } as unknown as SupabaseClient<any>;
 }
 
 function createSelectBuilder(responses: Array<{ data: unknown; error: unknown }>) {

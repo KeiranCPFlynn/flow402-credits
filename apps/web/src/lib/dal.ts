@@ -2,6 +2,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { Flow402Error, Flow402ErrorCode } from "./flow402-error";
 
+type AnySupabaseClient = SupabaseClient<any, any, any, any, any>;
+
 const vendorRowSchema = z.object({
     id: z.string().uuid(),
     slug: z.string(),
@@ -32,13 +34,13 @@ const creditRowSchema = z.object({
 const userSettingsRowSchema = z.object({
     vendor_id: z.string().uuid(),
     user_id: z.string().uuid(),
-    settings: z.record(z.unknown()),
+    settings: z.record(z.string(), z.unknown()),
 });
 
 const apiKeySchema = z.string().min(4);
 const uuidSchema = z.string().uuid();
-const settingsInputSchema = z.record(z.unknown()).default({});
-const metadataSchema = z.record(z.unknown()).default({});
+const settingsInputSchema = z.record(z.string(), z.unknown()).default({});
+const metadataSchema = z.record(z.string(), z.unknown()).default({});
 
 export type VendorRecord = z.infer<typeof vendorRowSchema>;
 export type VendorUserRecord = z.infer<typeof vendorUserSchema>;
@@ -69,7 +71,7 @@ export interface UpsertSettingsInput {
 type Maybe<T> = T | null;
 
 export class Flow402Dal {
-    constructor(private readonly supabase: SupabaseClient<unknown>) {}
+    constructor(private readonly supabase: AnySupabaseClient) {}
 
     async getVendorByKey(apiKey: string): Promise<VendorRecord> {
         const parsedKey = parseOrThrow(
