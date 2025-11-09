@@ -29,9 +29,15 @@ export default function DashboardPage() {
             .from("credits")
             .select("balance_cents")
             .eq("user_id", userId)
-            .single();
+            .maybeSingle();
 
-        if (balanceError) console.error("Balance error:", balanceError);
+        if (balanceError) {
+            console.error(
+                "Balance fetch error:",
+                balanceError.message ?? balanceError,
+                balanceError.code ?? ""
+            );
+        }
 
         const { data: txData, error: txError } = await supabase
             .from("tx_ledger")
