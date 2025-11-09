@@ -21,5 +21,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ balance_cents: data?.balance_cents ?? 0 });
+    const balanceCredits = data?.balance_cents ?? 0;
+    return NextResponse.json({ balance_credits: balanceCredits });
 }

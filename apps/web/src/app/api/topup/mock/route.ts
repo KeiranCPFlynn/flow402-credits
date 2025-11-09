@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 // Validate input
 const Body = z.object({
     userId: z.string().uuid(),
-    amount_cents: z.number().int().positive(),
+    amount_credits: z.number().int().positive(),
 });
 
 export async function POST(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     });
 
     try {
-        const { userId, amount_cents } = Body.parse(await req.json());
+        const { userId, amount_credits } = Body.parse(await req.json());
 
         console.log("Creating Supabase client...");
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
         // Call your SQL function to increment balance
         const { error } = await supabase.rpc("increment_balance", {
             p_user: userId,
-            p_amount: amount_cents,
+            p_amount: amount_credits,
         });
 
         if (error) throw error;

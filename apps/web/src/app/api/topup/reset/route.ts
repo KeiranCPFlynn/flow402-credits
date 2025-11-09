@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const previousBalanceCents = currentBalance?.balance_cents ?? 0;
+        const previousBalanceCredits = currentBalance?.balance_cents ?? 0;
 
         if (noRow) {
             const { error: upsertError } = await supabase.from("credits").upsert({
@@ -67,11 +67,11 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        if (previousBalanceCents > 0) {
+        if (previousBalanceCredits > 0) {
             const { error: ledgerError } = await supabase.from("tx_ledger").insert({
                 user_id: userId,
                 kind: "deduct",
-                amount_cents: previousBalanceCents,
+                amount_cents: previousBalanceCredits,
                 ref: `manual_reset_${Date.now()}`,
             });
 
@@ -86,8 +86,8 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
             ok: true,
-            previous_balance_cents: previousBalanceCents,
-            new_balance_cents: 0,
+            previous_balance_credits: previousBalanceCredits,
+            new_balance_credits: 0,
         });
     } catch (error) {
         console.error("Reset balance route error:", error);

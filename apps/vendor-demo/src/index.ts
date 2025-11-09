@@ -28,7 +28,7 @@ function buildRef(userId: string, path: string): string {
 /**
  * Middleware that checks credits and performs deduction
  */
-function x402(price_cents: number) {
+function x402(priceCredits: number) {
     return async (req: Request, res: ExpressResponse, next: NextFunction) => {
         const debugFlag =
             typeof req.headers["x-debug"] === "string" &&
@@ -100,7 +100,11 @@ function x402(price_cents: number) {
             r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId, ref, amount_cents: price_cents }),
+                body: JSON.stringify({
+                    userId,
+                    ref,
+                    amount_credits: priceCredits,
+                }),
             });
         } catch (err) {
             error("❌ Gateway unreachable:", err);

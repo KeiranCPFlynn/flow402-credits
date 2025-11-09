@@ -11,7 +11,7 @@ This Next.js app powers the Flow402 gateway and demo dashboard. It exposes the c
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ (server) | Service role key used by API routes (`/api/gateway/deduct`, `/api/topup/mock`, `/api/topup/reset`). Never expose this to the browser. |
 | `VENDOR_DEMO_URL` | ✅ | Base URL for the vendor demo deployment (e.g. `https://flow402-credits-vendor-demo-xxxxx.ondigitalocean.app`). |
 | `DEMO_USER_ID` | optional | UUID to show on the dashboard. Defaults to `9c0383a1-0887-4c0f-98ca-cb71ffc4e76c`. |
-| `DEMO_TOPUP_CENTS` | optional | Amount (in cents) to auto top-up when the demo detects a 402. Defaults to `500` (i.e. $5). |
+| `DEMO_TOPUP_CREDITS` | optional | Credits to auto top-up when the demo detects a 402. Defaults to `500` (i.e. $5). |
 
 Add these to `.env.local` during development and to your Vercel or hosting project for production.
 
