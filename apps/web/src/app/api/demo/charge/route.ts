@@ -12,6 +12,7 @@ const demoUserId =
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const autoTopupCredits = Number(process.env.DEMO_TOPUP_CREDITS ?? 500);
+const tenantId = process.env.FLOW402_TENANT_ID;
 
 type VendorCall = {
     status: number;
@@ -81,6 +82,17 @@ export async function POST(request: Request) {
         );
     }
 
+    if (!tenantId) {
+        return NextResponse.json(
+            {
+                ok: false,
+                error: "tenant_not_configured",
+                logs: ["[Next] Missing FLOW402_TENANT_ID environment variable"],
+            },
+            { status: 500 }
+        );
+    }
+
     const trace: string[] = [];
     const traceStep = (message: string) => {
         trace.push(message);
@@ -101,8 +113,11 @@ export async function POST(request: Request) {
             traceStep("[Next] Auto top-up triggered after 402 response");
             const supabase = createClient(supabaseUrl, supabaseServiceKey);
             const { error: topupError } = await supabase.rpc("increment_balance", {
+                p_tenant: tenantId,
                 p_user: userId,
                 p_amount: autoTopupCredits,
+                p_kind: "topup",
+                p_ref: `auto_topup_${Date.now()}`,
             });
 
             if (topupError) {

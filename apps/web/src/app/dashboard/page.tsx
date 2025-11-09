@@ -6,6 +6,13 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const tenantId = process.env.NEXT_PUBLIC_FLOW402_TENANT_ID;
+const defaultUserId =
+    process.env.NEXT_PUBLIC_DEMO_USER_ID || "9c0383a1-0887-4c0f-98ca-cb71ffc4e76c";
+
+if (!tenantId) {
+    throw new Error("NEXT_PUBLIC_FLOW402_TENANT_ID is not configured");
+}
 
 const presetUsdAmounts = ["1", "5", "10"];
 
@@ -22,12 +29,13 @@ export default function DashboardPage() {
         body: unknown;
         logs: string[];
     } | null>(null);
-    const userId = "9c0383a1-0887-4c0f-98ca-cb71ffc4e76c";
+    const userId = defaultUserId;
 
     const fetchData = async () => {
         const { data: balanceData, error: balanceError } = await supabase
             .from("credits")
             .select("balance_cents")
+            .eq("tenant_id", tenantId)
             .eq("user_id", userId)
             .maybeSingle();
 
@@ -42,6 +50,8 @@ export default function DashboardPage() {
         const { data: txData, error: txError } = await supabase
             .from("tx_ledger")
             .select("kind, amount_cents, created_at, ref")
+            .eq("tenant_id", tenantId)
+            .eq("user_id", userId)
             .order("created_at", { ascending: false })
             .limit(10);
 

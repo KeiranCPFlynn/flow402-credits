@@ -9,10 +9,21 @@ const Body = z.object({
     amount_credits: z.number().int().positive(),
 });
 
+const tenantId = process.env.FLOW402_TENANT_ID;
+
 export async function POST(req: NextRequest) {
     console.log("💡 /api/gateway/deduct called");
 
+    if (!tenantId) {
+        console.error("❌ FLOW402_TENANT_ID missing");
+        return NextResponse.json(
+            { ok: false, error: "tenant_not_configured" },
+            { status: 500 }
+        );
+    }
+
     try {
+        const scopedTenantId = tenantId as string;
         const { userId, ref, amount_credits } = Body.parse(await req.json());
         console.log("➡️ Request body:", { userId, ref, amount_credits });
 
@@ -21,12 +32,13 @@ export async function POST(req: NextRequest) {
             process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
 
-        // Get current balance
+        // Get current balance scoped to the tenant
         const { data: credit, error: balanceError } = await supabase
             .from("credits")
             .select("balance_cents")
+            .eq("tenant_id", scopedTenantId)
             .eq("user_id", userId)
-            .single();
+            .maybeSingle();
 
         if (balanceError) {
             console.error("❌ Supabase balance fetch error:", balanceError.message);
@@ -49,25 +61,38 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Deduct credits and insert into ledger
-        const newBalance = currentCredits - amount_credits;
+        const { data: rpcBalance, error: deductError } = await supabase.rpc(
+            "deduct_balance",
+            {
+                p_tenant: scopedTenantId,
+                p_user: userId,
+                p_amount: amount_credits,
+                p_ref: ref,
+            }
+        );
 
-        const { error: updateError } = await supabase
-            .from("credits")
-            .update({ balance_cents: newBalance })
-            .eq("user_id", userId);
+        if (deductError) {
+            const message = deductError.message ?? "";
+            if (message.includes("insufficient_funds")) {
+                console.warn("⚠️ RPC reported insufficient funds after check");
+                return NextResponse.json(
+                    {
+                        price_credits: amount_credits,
+                        currency: "USDC",
+                        topup_url: `/topup?need=${amount_credits}&user=${userId}`,
+                    },
+                    { status: 402 }
+                );
+            }
 
-        if (updateError) {
-            console.error("❌ Deduction update failed:", updateError.message);
-            throw updateError;
+            console.error("❌ Deduct RPC failed:", deductError);
+            throw deductError;
         }
 
-        await supabase.from("tx_ledger").insert({
-            user_id: userId,
-            kind: "deduct",
-            amount_cents: amount_credits,
-            ref,
-        });
+        const newBalance =
+            typeof rpcBalance === "number"
+                ? rpcBalance
+                : Number(rpcBalance ?? currentCredits - amount_credits);
 
         console.log("✅ Deduct successful, new balance:", newBalance);
 

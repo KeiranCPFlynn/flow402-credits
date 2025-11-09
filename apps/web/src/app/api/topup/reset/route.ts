@@ -8,10 +8,18 @@ const Body = z.object({
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const tenantId = process.env.FLOW402_TENANT_ID;
 const demoUserId =
     process.env.DEMO_USER_ID || "9c0383a1-0887-4c0f-98ca-cb71ffc4e76c";
 
 export async function POST(req: NextRequest) {
+    if (!tenantId) {
+        return NextResponse.json(
+            { ok: false, error: "tenant_not_configured" },
+            { status: 500 }
+        );
+    }
+
     try {
         const body = Body.parse(await req.json().catch(() => ({})));
         const userId = body.userId ?? demoUserId;
@@ -21,15 +29,11 @@ export async function POST(req: NextRequest) {
         const { data: currentBalance, error: fetchError } = await supabase
             .from("credits")
             .select("balance_cents, user_id")
+            .eq("tenant_id", tenantId)
             .eq("user_id", userId)
-            .single();
+            .maybeSingle();
 
-        const noRow =
-            fetchError && typeof fetchError === "object"
-                ? (fetchError as any).code === "PGRST116"
-                : false;
-
-        if (fetchError && !noRow) {
+        if (fetchError) {
             console.error("Reset balance fetch error:", fetchError);
             return NextResponse.json(
                 { ok: false, error: "balance_fetch_failed" },
@@ -39,8 +43,9 @@ export async function POST(req: NextRequest) {
 
         const previousBalanceCredits = currentBalance?.balance_cents ?? 0;
 
-        if (noRow) {
+        if (!currentBalance) {
             const { error: upsertError } = await supabase.from("credits").upsert({
+                tenant_id: tenantId,
                 user_id: userId,
                 balance_cents: 0,
             });
@@ -56,6 +61,7 @@ export async function POST(req: NextRequest) {
             const { error: updateError } = await supabase
                 .from("credits")
                 .update({ balance_cents: 0 })
+                .eq("tenant_id", tenantId)
                 .eq("user_id", userId);
 
             if (updateError) {
@@ -69,8 +75,9 @@ export async function POST(req: NextRequest) {
 
         if (previousBalanceCredits > 0) {
             const { error: ledgerError } = await supabase.from("tx_ledger").insert({
+                tenant_id: tenantId,
                 user_id: userId,
-                kind: "deduct",
+                kind: "manual_reset",
                 amount_cents: previousBalanceCredits,
                 ref: `manual_reset_${Date.now()}`,
             });

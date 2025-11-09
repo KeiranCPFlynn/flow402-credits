@@ -25,12 +25,17 @@ const SUPABASE_KEY =
 
 // Create Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const TENANT_ID =
+    process.env.FLOW402_TENANT_ID ||
+    process.env.NEXT_PUBLIC_FLOW402_TENANT_ID ||
+    "0b7d4b0a-6e10-4db4-8571-2c74e07bcb35";
 
 // === BALANCE HELPER ===
 async function showBalance() {
     const { data, error } = await supabase
         .from("credits")
         .select("balance_cents")
+        .eq("tenant_id", TENANT_ID)
         .eq("user_id", AGENT_USER_ID)
         .single();
 

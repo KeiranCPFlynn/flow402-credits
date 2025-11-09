@@ -8,6 +8,8 @@ const Body = z.object({
     amount_credits: z.number().int().positive(),
 });
 
+const tenantId = process.env.FLOW402_TENANT_ID;
+
 export async function POST(req: NextRequest) {
     // DEBUG - Must be FIRST thing in the function
     console.log("=== TOPUP API CALLED ===");
@@ -17,6 +19,14 @@ export async function POST(req: NextRequest) {
         serviceKeyLength: process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
         allEnvKeys: Object.keys(process.env).filter(k => k.includes('SUPABASE'))
     });
+
+    if (!tenantId) {
+        console.error("FLOW402_TENANT_ID missing for top-up mock route");
+        return NextResponse.json(
+            { ok: false, error: "tenant_not_configured" },
+            { status: 500 }
+        );
+    }
 
     try {
         const { userId, amount_credits } = Body.parse(await req.json());
@@ -30,8 +40,11 @@ export async function POST(req: NextRequest) {
 
         // Call your SQL function to increment balance
         const { error } = await supabase.rpc("increment_balance", {
+            p_tenant: tenantId,
             p_user: userId,
             p_amount: amount_credits,
+            p_kind: "topup",
+            p_ref: `dashboard_topup_${Date.now()}`,
         });
 
         if (error) throw error;
