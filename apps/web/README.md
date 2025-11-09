@@ -10,10 +10,21 @@ This Next.js app powers the Flow402 gateway and demo dashboard. It exposes the c
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon key for browser interactions. |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ (server) | Service role key used by API routes (`/api/gateway/deduct`, `/api/topup/mock`, `/api/topup/reset`). Never expose this to the browser. |
 | `VENDOR_DEMO_URL` | ✅ | Base URL for the vendor demo deployment (e.g. `https://flow402-credits-vendor-demo-xxxxx.ondigitalocean.app`). |
+| `FLOW402_TENANT_ID` | ✅ | Tenant UUID that scopes credits + ledger RPC calls. Set to the row inside the `tenants` table created by the Supabase migration. |
+| `NEXT_PUBLIC_FLOW402_TENANT_ID` | ✅ | Same UUID exposed to the dashboard so the anon Supabase client only reads data for that tenant. |
 | `DEMO_USER_ID` | optional | UUID to show on the dashboard. Defaults to `9c0383a1-0887-4c0f-98ca-cb71ffc4e76c`. |
+| `NEXT_PUBLIC_DEMO_USER_ID` | optional | Browser-friendly copy of `DEMO_USER_ID` so the dashboard can talk to Supabase with the anon key. |
 | `DEMO_TOPUP_CREDITS` | optional | Credits to auto top-up when the demo detects a 402. Defaults to `500` (i.e. $5). |
 
 Add these to `.env.local` during development and to your Vercel or hosting project for production.
+
+### Supabase Schema
+
+Apply `supabase/migrations/20251109-mvp-03-multi-tenant-credits.sql` (via the Supabase SQL editor or `supabase db push`) before running the dashboard. It provisions:
+
+- `tenants` – catalog of Flow402 vendor projects (a seeded `demo` row matches the default `FLOW402_TENANT_ID`).
+- `credits` / `tx_ledger` – tenant-scoped tables for balances + ledger history.
+- `increment_balance` / `deduct_balance` – idempotent RPC helpers that keep ledger + balance mutations atomic.
 
 ## Running Locally
 

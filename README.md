@@ -25,13 +25,17 @@ Create a `.env` (or `.env.local` for Next.js) at the repo root with:
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
+FLOW402_TENANT_ID=0b7d4b0a-6e10-4db4-8571-2c74e07bcb35
+NEXT_PUBLIC_FLOW402_TENANT_ID=0b7d4b0a-6e10-4db4-8571-2c74e07bcb35
 VENDOR_DEMO_URL=http://localhost:4000
 DEMO_USER_ID=9c0383a1-0887-4c0f-98ca-cb71ffc4e76c
+NEXT_PUBLIC_DEMO_USER_ID=9c0383a1-0887-4c0f-98ca-cb71ffc4e76c
 GATEWAY_DEDUCT_URL=http://localhost:3000/api/gateway/deduct
 DEMO_TOPUP_CREDITS=500
 ```
 
 - The web app reads the Supabase credentials, the optional `DEMO_USER_ID`, and `VENDOR_DEMO_URL` for the simulation button.
+- `FLOW402_TENANT_ID` (mirrored to `NEXT_PUBLIC_FLOW402_TENANT_ID`) scopes the Supabase `credits` + `tx_ledger` tables to the correct vendor project.
 - The vendor demo needs `GATEWAY_DEDUCT_URL` so it knows where to send credit checks.
 
 ## Demo Flow
@@ -63,6 +67,6 @@ Redeploy the vendor demo when `dist/index.js` changes. Redeploy the web app when
 
 - **402 when you expect 200** – Check Supabase `credits` table balance and ensure the vendor demo is hitting the right `GATEWAY_DEDUCT_URL`.
 - **Dashboard buttons failing** – Confirm `VENDOR_DEMO_URL` is set and reachable; inspect the trace logs rendered in the dashboard card.
-- **Missing Supabase schema** – Run migrations/SQL to create `credits` and `tx_ledger` tables plus the `increment_balance` RPC used by the mock top-up route.
+- **Missing Supabase schema** – Execute `supabase/migrations/20251109-mvp-03-multi-tenant-credits.sql` in the Supabase SQL editor to provision the multi-tenant `credits`/`tx_ledger` tables plus the idempotent `increment_balance` and `deduct_balance` RPCs.
 
 Happy demoing! Reach out if you need more automation or test fixtures. 
