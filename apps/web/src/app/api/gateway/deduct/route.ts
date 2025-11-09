@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { Flow402Dal } from "@/lib/dal";
+import { isFlow402Error } from "@/lib/flow402-error";
 
 // Validate the expected JSON body
 const Body = z.object({
@@ -22,34 +24,27 @@ export async function POST(req: NextRequest) {
         );
     }
 
+    let parsedBody: z.infer<typeof Body> | null = null;
+
     try {
         const scopedTenantId = tenantId as string;
-        const { userId, ref, amount_credits } = Body.parse(await req.json());
+        parsedBody = Body.parse(await req.json());
+        const { userId, ref, amount_credits } = parsedBody;
         console.log("➡️ Request body:", { userId, ref, amount_credits });
 
         const supabase = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
+        const dal = new Flow402Dal(supabase);
 
-        // Get current balance scoped to the tenant
-        const { data: credit, error: balanceError } = await supabase
-            .from("credits")
-            .select("balance_cents")
-            .eq("tenant_id", scopedTenantId)
-            .eq("user_id", userId)
-            .maybeSingle();
+        const vendorUser = await dal.ensureVendorUser(scopedTenantId, userId);
+        const balance = await dal.getBalance(scopedTenantId, vendorUser.user_id);
 
-        if (balanceError) {
-            console.error("❌ Supabase balance fetch error:", balanceError.message);
-            throw balanceError;
-        }
-
-        const currentCredits = credit?.balance_cents ?? 0;
-        console.log(`💰 Current balance: ${currentCredits} credits`);
+        console.log(`💰 Current balance: ${balance.credits} credits`);
 
         // Not enough credits → trigger 402 response
-        if (currentCredits < amount_credits) {
+        if (balance.credits < amount_credits) {
             console.log("⚠️ Insufficient credits, returning 402");
             return NextResponse.json(
                 {
@@ -61,47 +56,49 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const { data: rpcBalance, error: deductError } = await supabase.rpc(
-            "deduct_balance",
-            {
-                p_tenant: scopedTenantId,
-                p_user: userId,
-                p_amount: amount_credits,
-                p_ref: ref,
-            }
-        );
+        const newBalance = await dal.incrementBalance({
+            vendorId: scopedTenantId,
+            vendorUserId: vendorUser.user_id,
+            deltaCredits: -amount_credits,
+            kind: "debit",
+            ref,
+            route: "/api/gateway/deduct",
+            meta: { attempted_amount: amount_credits },
+        });
 
-        if (deductError) {
-            const message = deductError.message ?? "";
-            if (message.includes("insufficient_funds")) {
-                console.warn("⚠️ RPC reported insufficient funds after check");
+        console.log("✅ Deduct successful, new balance:", newBalance);
+
+        return NextResponse.json({ ok: true, new_balance: newBalance }, { status: 200 });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            console.error("❌ Invalid gateway request payload", error);
+            return NextResponse.json(
+                { ok: false, error: "invalid_request", details: error.flatten() },
+                { status: 400 }
+            );
+        }
+
+        if (isFlow402Error(error)) {
+            console.error(`❌ Flow402 error (${error.code}):`, error);
+
+            if (error.code === "insufficient_funds") {
                 return NextResponse.json(
                     {
-                        price_credits: amount_credits,
+                        price_credits: parsedBody?.amount_credits ?? 0,
                         currency: "USDC",
-                        topup_url: `/topup?need=${amount_credits}&user=${userId}`,
+                        topup_url: `/topup?need=${parsedBody?.amount_credits ?? 0}&user=${parsedBody?.userId ?? "unknown"}`,
                     },
                     { status: 402 }
                 );
             }
 
-            console.error("❌ Deduct RPC failed:", deductError);
-            throw deductError;
+            return NextResponse.json(
+                { ok: false, error: error.code, details: error.message },
+                { status: error.status }
+            );
         }
 
-        const newBalance =
-            typeof rpcBalance === "number"
-                ? rpcBalance
-                : Number(rpcBalance ?? currentCredits - amount_credits);
-
-        console.log("✅ Deduct successful, new balance:", newBalance);
-
-        return NextResponse.json({ ok: true, new_balance: newBalance }, { status: 200 });
-    } catch (e: any) {
-        console.error("❌ Gateway deduct route error:", e);
-        return NextResponse.json(
-            { ok: false, error: String(e) },
-            { status: 500 }
-        );
+        console.error("❌ Gateway deduct route error:", error);
+        return NextResponse.json({ ok: false, error: "unknown_error" }, { status: 500 });
     }
 }

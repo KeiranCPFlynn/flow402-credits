@@ -14,13 +14,16 @@ const GATEWAY_DEDUCT_URL =
     process.env.GATEWAY_DEDUCT_URL || "http://localhost:3000/api/gateway/deduct";
 
 /**
- * Helper: create a stable daily idempotency key per user + route
+ * Helper: create a unique idempotency key per call.
+ * Real vendors should supply a request-scoped UUID so retries remain safe.
+ * We include the date in the hash so keys stay debuggable in Supabase.
  */
 function buildRef(userId: string, path: string): string {
     const day = new Date().toISOString().slice(0, 10);
+    const nonce = crypto.randomBytes(6).toString("hex");
     return crypto
         .createHash("sha256")
-        .update(`${userId}|${path}|${day}`)
+        .update(`${userId}|${path}|${day}|${nonce}`)
         .digest("hex")
         .slice(0, 32);
 }

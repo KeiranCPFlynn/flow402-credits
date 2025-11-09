@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { Flow402Dal } from "@/lib/dal";
+import { isFlow402Error } from "@/lib/flow402-error";
 
 const Body = z.object({
     userId: z.string().uuid().optional(),
@@ -103,6 +105,12 @@ export async function POST(request: Request) {
         const userId = body.userId ?? demoUserId;
         traceStep(`[Next] Simulating charge for user ${userId}`);
 
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const dal = new Flow402Dal(supabase);
+        const scopedTenantId = tenantId as string;
+
+        await dal.ensureVendorUser(scopedTenantId, userId);
+
         const endpoint = `${vendorDemoUrl.replace(/\/$/, "")}/demo/screenshot`;
         traceStep(`[Next] Calling vendor demo: GET ${endpoint}`);
 
@@ -111,23 +119,21 @@ export async function POST(request: Request) {
 
         if (firstCall.status === 402) {
             traceStep("[Next] Auto top-up triggered after 402 response");
-            const supabase = createClient(supabaseUrl, supabaseServiceKey);
-            const { error: topupError } = await supabase.rpc("increment_balance", {
-                p_tenant: tenantId,
-                p_user: userId,
-                p_amount: autoTopupCredits,
-                p_kind: "topup",
-                p_ref: `auto_topup_${Date.now()}`,
-            });
-
-            if (topupError) {
-                traceStep(
-                    `[Next] Auto top-up failed: ${
-                        topupError instanceof Error
-                            ? topupError.message
-                            : JSON.stringify(topupError)
-                    }`
-                );
+            try {
+                await dal.incrementBalance({
+                    vendorId: scopedTenantId,
+                    vendorUserId: userId,
+                    deltaCredits: autoTopupCredits,
+                    kind: "credit",
+                    ref: `auto_topup_${Date.now()}`,
+                    route: "/api/demo/charge",
+                    meta: { trigger: "demo_auto_topup" },
+                });
+            } catch (error) {
+                const message = isFlow402Error(error)
+                    ? `${error.code}: ${error.message}`
+                    : String(error);
+                traceStep(`[Next] Auto top-up failed: ${message}`);
                 return NextResponse.json(
                     {
                         ok: false,

@@ -18,6 +18,8 @@ Point both `FLOW402_TENANT_ID` and `NEXT_PUBLIC_FLOW402_TENANT_ID` at the tenant
 | Table | Purpose | Important Columns |
 | --- | --- | --- |
 | `tenants` | Catalog of vendors onboarded to Flow402. A row represents one vendor environment (demo, staging, prod, etc.). | `id` (UUID PK), `slug`, `name`. |
+| `vendor_users` | Maps each vendor’s external user UUID to Flow402 metadata (e.g., optional ETH address). | `vendor_id`, `user_id`, `user_external_id`, `eth_address`. |
+| `vendor_user_settings` | JSONB bag for per-user preferences exposed to gateway/business logic. | `vendor_id`, `user_id`, `settings`. |
 | `credits` | Current credit balance per `(tenant_id, user_id)`. | `tenant_id` (FK → `tenants.id`), `user_id`, `balance_cents`, `currency` (defaults to `USDC`). |
 | `tx_ledger` | Immutable record of every credit mutation for auditing/idempotency. | `tenant_id`, `user_id`, `kind` (`topup`, `deduct`, `manual_reset`, `adjustment`), `amount_cents`, `ref`, `metadata`, `created_at`. |
 
