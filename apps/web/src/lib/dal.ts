@@ -71,6 +71,9 @@ export interface UpsertSettingsInput {
 type Maybe<T> = T | null;
 
 export class Flow402Dal {
+    private vendorUsersAvailable = true;
+    private vendorUserSettingsAvailable = true;
+
     constructor(private readonly supabase: AnySupabaseClient) {}
 
     async getVendorByKey(apiKey: string): Promise<VendorRecord> {
@@ -124,6 +127,10 @@ export class Flow402Dal {
             ? parseOrThrow(ethAddressSchema, userEth, "validation_error", "Invalid Ethereum address")
             : undefined;
 
+        if (!this.vendorUsersAvailable) {
+            return this.createVendorUserRecord(parsedVendorId, parsedUserId, normalizedEth);
+        }
+
         const existing = await this.fetchVendorUser(parsedVendorId, parsedUserId);
         if (existing) {
             if (normalizedEth && normalizedEth !== existing.eth_address) {
@@ -147,6 +154,10 @@ export class Flow402Dal {
             .single();
 
         if (error) {
+            if (this.handleMissingTable(error, "vendor_users")) {
+                return this.createVendorUserRecord(parsedVendorId, parsedUserId, normalizedEth);
+            }
+
             if (error.code === "23505") {
                 const retry = await this.fetchVendorUser(parsedVendorId, parsedUserId);
                 if (retry) {
@@ -232,6 +243,10 @@ export class Flow402Dal {
         vendorId: string,
         vendorUserId: string
     ): Promise<Record<string, unknown>> {
+        if (!this.vendorUserSettingsAvailable) {
+            return {};
+        }
+
         const parsedVendor = parseOrThrow(
             uuidSchema,
             vendorId,
@@ -253,6 +268,10 @@ export class Flow402Dal {
             .maybeSingle();
 
         if (error) {
+            if (this.handleMissingTable(error, "vendor_user_settings")) {
+                return {};
+            }
+
             throw new Flow402Error("settings_lookup_failed", "Unable to load user settings", {
                 cause: error,
             });
@@ -272,6 +291,10 @@ export class Flow402Dal {
     }
 
     async upsertUserSettings(input: UpsertSettingsInput): Promise<Record<string, unknown>> {
+        if (!this.vendorUserSettingsAvailable) {
+            return { ...input.patch };
+        }
+
         const parsed = parseOrThrow(
             upsertSettingsInputSchema,
             input,
@@ -292,6 +315,10 @@ export class Flow402Dal {
             .single();
 
         if (error) {
+            if (this.handleMissingTable(error, "vendor_user_settings")) {
+                return merged;
+            }
+
             throw new Flow402Error("settings_upsert_failed", "Unable to persist user settings", {
                 cause: error,
             });
@@ -334,6 +361,10 @@ export class Flow402Dal {
         vendorId: string,
         userId: string
     ): Promise<Maybe<VendorUserRecord>> {
+        if (!this.vendorUsersAvailable) {
+            return null;
+        }
+
         const { data, error } = await this.supabase
             .from("vendor_users")
             .select("vendor_id, user_id, user_external_id, eth_address")
@@ -342,6 +373,10 @@ export class Flow402Dal {
             .maybeSingle();
 
         if (error) {
+            if (this.handleMissingTable(error, "vendor_users")) {
+                return null;
+            }
+
             throw new Flow402Error("vendor_user_lookup_failed", "Unable to query vendor user", {
                 cause: error,
             });
@@ -362,6 +397,10 @@ export class Flow402Dal {
         userId: string,
         eth: string
     ): Promise<VendorUserRecord> {
+        if (!this.vendorUsersAvailable) {
+            return this.createVendorUserRecord(vendorId, userId, eth);
+        }
+
         const { data, error } = await this.supabase
             .from("vendor_users")
             .update({ eth_address: eth })
@@ -371,6 +410,10 @@ export class Flow402Dal {
             .single();
 
         if (error) {
+            if (this.handleMissingTable(error, "vendor_users")) {
+                return this.createVendorUserRecord(vendorId, userId, eth);
+            }
+
             throw new Flow402Error("vendor_user_lookup_failed", "Unable to update vendor user", {
                 cause: error,
             });
@@ -435,6 +478,31 @@ export class Flow402Dal {
         }
 
         return normalizeBalanceResult(data);
+    }
+
+    private handleMissingTable(error: { message?: string; code?: string }, table: string): boolean {
+        const missing = isMissingTableError(error, table);
+        if (missing) {
+            if (table === "vendor_users") {
+                this.vendorUsersAvailable = false;
+            } else if (table === "vendor_user_settings") {
+                this.vendorUserSettingsAvailable = false;
+            }
+        }
+        return missing;
+    }
+
+    private createVendorUserRecord(
+        vendorId: string,
+        userId: string,
+        eth?: string
+    ): VendorUserRecord {
+        return {
+            vendor_id: vendorId,
+            user_id: userId,
+            user_external_id: userId,
+            eth_address: eth ?? null,
+        };
     }
 }
 
@@ -526,4 +594,21 @@ function normalizeBalanceResult(value: unknown): number {
     throw new Flow402Error("mutation_failed", "RPC returned an invalid balance value", {
         details: value,
     });
+}
+
+function isMissingTableError(error: { message?: string; code?: string }, table: string): boolean {
+    if (!error) {
+        return false;
+    }
+
+    const code = error.code ?? "";
+    const message = (error.message ?? "").toLowerCase();
+    const tableLower = table.toLowerCase();
+
+    return (
+        code === "42P01" ||
+        code === "PGRST116" ||
+        message.includes(`relation "${tableLower}" does not exist`) ||
+        message.includes(`relation "public.${tableLower}" does not exist`)
+    );
 }
