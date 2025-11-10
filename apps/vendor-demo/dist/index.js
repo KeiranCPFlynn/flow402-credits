@@ -10,14 +10,19 @@ const app = (0, express_1.default)();
 app.use(express_1.default.json());
 // 👇 Flow402 Gateway (your Next.js API)
 const GATEWAY_DEDUCT_URL = process.env.GATEWAY_DEDUCT_URL || "http://localhost:3000/api/gateway/deduct";
+const FLOW402_VENDOR_KEY = requireEnv("FLOW402_VENDOR_KEY");
+const FLOW402_SIGNING_SECRET = requireEnv("FLOW402_SIGNING_SECRET");
 /**
- * Helper: create a stable daily idempotency key per user + route
+ * Helper: create a unique idempotency key per call.
+ * Real vendors should supply a request-scoped UUID so retries remain safe.
+ * We include the date in the hash so keys stay debuggable in Supabase.
  */
 function buildRef(userId, path) {
     const day = new Date().toISOString().slice(0, 10);
+    const nonce = node_crypto_1.default.randomBytes(6).toString("hex");
     return node_crypto_1.default
         .createHash("sha256")
-        .update(`${userId}|${path}|${day}`)
+        .update(`${userId}|${path}|${day}|${nonce}`)
         .digest("hex")
         .slice(0, 32);
 }
@@ -92,14 +97,15 @@ function x402(priceCredits) {
         }
         let r;
         try {
+            const gatewayBody = JSON.stringify({
+                userId,
+                ref,
+                amount_credits: priceCredits,
+            });
             r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userId,
-                    ref,
-                    amount_credits: priceCredits,
-                }),
+                headers: buildSignatureHeaders(gatewayBody),
+                body: gatewayBody,
             });
         }
         catch (err) {
@@ -155,3 +161,24 @@ app.get("/", (_req, res) => {
 });
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`Vendor demo running on :${port}`));
+function buildSignatureHeaders(body) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const bodyHash = node_crypto_1.default.createHash("sha256").update(body, "utf8").digest("hex");
+    const signature = node_crypto_1.default
+        .createHmac("sha256", FLOW402_SIGNING_SECRET)
+        .update(`${timestamp}.${body}`, "utf8")
+        .digest("hex");
+    return {
+        "Content-Type": "application/json",
+        "x-f402-key": FLOW402_VENDOR_KEY,
+        "x-f402-body-sha": bodyHash,
+        "x-f402-sig": `t=${timestamp},v1=${signature}`,
+    };
+}
+function requireEnv(name) {
+    const value = process.env[name];
+    if (!value) {
+        throw new Error(`${name} env var is required for signed gateway calls`);
+    }
+    return value;
+}

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsc -p tsconfig.test.json && node --test dist-tests"
+    "test": "tsc -p tsconfig.test.json && node --test dist-tests/**/*.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",
