@@ -21,7 +21,9 @@ Freezing the minimum viable product contract between a Flow402-enabled vendor AP
 | `x-user-id` | Agent → Vendor | ✅ | Canonical UUID for the caller. The vendor must forward it unchanged into the gateway JSON body (`userId`). |
 | `x-debug` | Agent → Vendor | optional | When the value is one of `1,true,yes,on` (case-insensitive) we return `debug` arrays from vendor + Flow402 traces (see `apps/vendor-demo/src/index.ts`). |
 | `Content-Type: application/json` | Vendor → Flow402 | ✅ | Required on `POST /api/gateway/deduct`. |
-| `X-Flow402-Signature` | Vendor ↔ Flow402 | ✅ | HMAC-SHA256 signature described below. Flow402 validates this header on incoming deduction requests, and includes a fresh signature on 200/402 responses so the vendor can verify authenticity. |
+| `x-f402-key` | Vendor → Flow402 | ✅ | Vendor API key/slug/ID used to resolve the `tenants` row + signing secret. |
+| `x-f402-body-sha` | Vendor → Flow402 | ✅ | Lowercase SHA-256 hash of the exact JSON body forwarded to Flow402. Prevents silent body tampering. |
+| `x-f402-sig` / `X-Flow402-Signature` | Vendor ↔ Flow402 | ✅ | HMAC-SHA256 signature described below. Flow402 validates this header on incoming deduction requests, and includes a fresh signature on 200/402 responses so the vendor can verify authenticity. |
 
 ## Deduct Request (Vendor → Flow402)
 
@@ -73,8 +75,9 @@ X-Flow402-Signature: t=1729200000,v1=7d6d…
 
 ## HMAC Signing (`X-Flow402-Signature`)
 
-- **Secret**: `FLOW402_SIGNING_SECRET` shared by the vendor and gateway (store in `.env` for both apps).
-- **Header format**: `X-Flow402-Signature: t=<unix_epoch_seconds>,v1=<hex digest>`.
+- **Secret**: `FLOW402_SIGNING_SECRET` shared by the vendor and gateway (store in `.env` for both apps). The gateway also fetches per-vendor `signing_secret` values from Supabase via `x-f402-key`.
+- **Header format**: `x-f402-sig: t=<unix_epoch_seconds>,v1=<hex digest>` (legacy `X-Flow402-Signature` is still accepted).
+- **Body hash**: Vendors must send `x-f402-body-sha` with the lowercase SHA-256 digest of the JSON payload they post. The gateway recomputes the hash before validating `x-f402-sig`.
 - **String to sign**: `t + "." + body`, where `body` is the raw request/response JSON string sent over the wire.
 - **Digest**: `HMAC_SHA256(secret, string_to_sign)` encoded as lowercase hex.
 - **Verification window**: Vendors should reject responses older than 5 minutes (`abs(now - t) > 300`).
@@ -98,7 +101,7 @@ The same routine applies to responses: read the header, rebuild `input` with the
 
 ## Implementation Notes
 
-- As of commit time, the vendor demo (`apps/vendor-demo`) and gateway routes do not yet emit or verify `X-Flow402-Signature`; adding the header is the next action item after freezing this spec.
+- The vendor demo (`apps/vendor-demo`) now signs every deduction request with `x-f402-key`, `x-f402-body-sha`, and `x-f402-sig`; the gateway enforces the same ±5 minute skew window before processing credits.
 - The credits unit, headers, and 402 envelope described above already match the live demo implementations, so wiring in HMAC should be additive and non-breaking.
 
 ## References

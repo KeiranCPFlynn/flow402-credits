@@ -12,6 +12,8 @@ app.use(express.json());
 // 👇 Flow402 Gateway (your Next.js API)
 const GATEWAY_DEDUCT_URL =
     process.env.GATEWAY_DEDUCT_URL || "http://localhost:3000/api/gateway/deduct";
+const FLOW402_VENDOR_KEY = requireEnv("FLOW402_VENDOR_KEY");
+const FLOW402_SIGNING_SECRET = requireEnv("FLOW402_SIGNING_SECRET");
 
 /**
  * Helper: create a unique idempotency key per call.
@@ -100,14 +102,16 @@ function x402(priceCredits: number) {
 
         let r: Response;
         try {
+            const gatewayBody = JSON.stringify({
+                userId,
+                ref,
+                amount_credits: priceCredits,
+            });
+
             r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userId,
-                    ref,
-                    amount_credits: priceCredits,
-                }),
+                headers: buildSignatureHeaders(gatewayBody),
+                body: gatewayBody,
             });
         } catch (err) {
             error("❌ Gateway unreachable:", err);
@@ -168,3 +172,27 @@ app.get("/", (_req, res) => {
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`Vendor demo running on :${port}`));
+
+function buildSignatureHeaders(body: string) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const bodyHash = crypto.createHash("sha256").update(body, "utf8").digest("hex");
+    const signature = crypto
+        .createHmac("sha256", FLOW402_SIGNING_SECRET)
+        .update(`${timestamp}.${body}`, "utf8")
+        .digest("hex");
+
+    return {
+        "Content-Type": "application/json",
+        "x-f402-key": FLOW402_VENDOR_KEY,
+        "x-f402-body-sha": bodyHash,
+        "x-f402-sig": `t=${timestamp},v1=${signature}`,
+    };
+}
+
+function requireEnv(name: string): string {
+    const value = process.env[name];
+    if (!value) {
+        throw new Error(`${name} env var is required for signed gateway calls`);
+    }
+    return value;
+}
