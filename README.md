@@ -27,7 +27,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 FLOW402_TENANT_ID=0b7d4b0a-6e10-4db4-8571-2c74e07bcb35
 NEXT_PUBLIC_FLOW402_TENANT_ID=0b7d4b0a-6e10-4db4-8571-2c74e07bcb35
-VENDOR_DEMO_URL=http://localhost:4000
+VENDOR_DEMO_URL=https://your-production-vendor-domain
+VENDOR_DEMO_URL_LOCAL=http://localhost:4000
 FLOW402_VENDOR_KEY=demo
 FLOW402_SIGNING_SECRET=demo-signing-secret
 DEMO_USER_ID=9c0383a1-0887-4c0f-98ca-cb71ffc4e76c
@@ -36,7 +37,7 @@ GATEWAY_DEDUCT_URL=http://localhost:3000/api/gateway/deduct
 DEMO_TOPUP_CREDITS=500
 ```
 
-- The web app reads the Supabase credentials, the optional `DEMO_USER_ID`, and `VENDOR_DEMO_URL` for the simulation button.
+- The web app reads the Supabase credentials, the optional `DEMO_USER_ID`, and `VENDOR_DEMO_URL` for the simulation button (falling back to `VENDOR_DEMO_URL_LOCAL` when running locally).
 - `FLOW402_TENANT_ID` (mirrored to `NEXT_PUBLIC_FLOW402_TENANT_ID`) scopes the Supabase `credits` + `tx_ledger` tables to the correct vendor project.
 - `FLOW402_VENDOR_KEY` / `FLOW402_SIGNING_SECRET` come from the `tenants` row in Supabase and are used to HMAC-sign vendor → gateway requests.
 - The vendor demo needs `GATEWAY_DEDUCT_URL` so it knows where to send credit checks.
@@ -65,12 +66,14 @@ Redeploy the vendor demo when `dist/index.js` changes. Redeploy the web app when
 - `pnpm --filter web build && pnpm --filter web start` – Production build & preview.
 - `pnpm --filter vendor-demo dev` – Express server via `ts-node`.
 - `pnpm --filter vendor-demo build && pnpm --filter vendor-demo start` – Production build & run.
+- `pnpm test:idempotency` – Hits the local gateway/top-up endpoints to verify idempotent behavior (requires `pnpm --filter web dev` running).
 
 ## Troubleshooting
 
 - **402 when you expect 200** – Check Supabase `credits` table balance and ensure the vendor demo is hitting the right `GATEWAY_DEDUCT_URL`.
 - **Dashboard buttons failing** – Confirm `VENDOR_DEMO_URL` is set and reachable; inspect the trace logs rendered in the dashboard card.
 - **Missing Supabase schema** – Execute `supabase/migrations/20251109-mvp-03-multi-tenant-credits.sql` in the Supabase SQL editor to provision the multi-tenant `credits`/`tx_ledger` tables plus the idempotent `increment_balance` and `deduct_balance` RPCs.
+- **Idempotency table absent** – Run `supabase/migrations/20250112-mvp-06-idempotency.sql` so `/api/gateway/deduct` and `/api/topup/mock` can share replay-safe responses across replicas.
 
 ## Signed Gateway Verification
 
@@ -79,6 +82,7 @@ The `/api/gateway/deduct` route now rejects unsigned or stale vendor requests. E
 - `x-f402-key` – Vendor API key (slug/id also work) from the `tenants` table.
 - `x-f402-body-sha` – Lowercase SHA-256 hash of the exact JSON body.
 - `x-f402-sig` – `t=<unix>,v1=<hmac>` where `hmac = HMAC_SHA256(secret, t + "." + body)` using the vendor’s `signing_secret`. Skew greater than 5 minutes results in `401 invalid_signature`.
+- `Idempotency-Key` – Stable, deterministic key per request body. Retries with the same body and key reuse the cached response for 24 hours instead of re-charging the ledger.
 
 ### Static Test Vector
 

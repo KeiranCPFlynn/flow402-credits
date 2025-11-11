@@ -8,7 +8,10 @@ const Body = z.object({
     userId: z.string().uuid().optional(),
 });
 
-const vendorDemoUrl = process.env.VENDOR_DEMO_URL;
+const vendorDemoUrl =
+    process.env.NODE_ENV === "production"
+        ? process.env.VENDOR_DEMO_URL
+        : process.env.VENDOR_DEMO_URL_LOCAL || process.env.VENDOR_DEMO_URL;
 const demoUserId =
     process.env.DEMO_USER_ID || "9c0383a1-0887-4c0f-98ca-cb71ffc4e76c";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

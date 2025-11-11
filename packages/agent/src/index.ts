@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: "../../.env" }); // 👈 points to the root of your repo
 
 import fetch from "node-fetch";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 // === CONFIG ===
@@ -76,7 +77,10 @@ async function callVendor() {
         const need = body.price_credits * 10; // top up 10× required amount
         await fetch(GATEWAY_TOPUP_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "Idempotency-Key": randomUUID(),
+            },
             body: JSON.stringify({ userId: AGENT_USER_ID, amount_credits: need }),
         });
         console.log(

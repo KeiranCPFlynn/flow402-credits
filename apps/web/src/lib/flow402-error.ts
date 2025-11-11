@@ -1,5 +1,7 @@
 export type Flow402ErrorCode =
     | "validation_error"
+    | "idempotency_conflict"
+    | "idempotency_store_failed"
     | "vendor_lookup_failed"
     | "vendor_not_found"
     | "vendor_user_lookup_failed"
