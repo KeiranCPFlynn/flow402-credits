@@ -84,6 +84,7 @@ function x402(priceCredits) {
                 .json(attachDebug({ error: "x-user-id header required" }));
         }
         const ref = buildRef(userId, req.path);
+        const idempotencyKey = ref;
         log(`➡️ Checking credit for ${userId} @ ${ref}`);
         if (debugFlag) {
             res.locals.debugLogs = debugLogs;
@@ -102,9 +103,13 @@ function x402(priceCredits) {
                 ref,
                 amount_credits: priceCredits,
             });
+            const gatewayHeaders = {
+                ...buildSignatureHeaders(gatewayBody),
+                "Idempotency-Key": idempotencyKey,
+            };
             r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
-                headers: buildSignatureHeaders(gatewayBody),
+                headers: gatewayHeaders,
                 body: gatewayBody,
             });
         }

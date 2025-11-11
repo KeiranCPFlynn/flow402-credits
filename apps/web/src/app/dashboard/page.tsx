@@ -16,6 +16,14 @@ if (!tenantId) {
 
 const presetUsdAmounts = ["1", "5", "10"];
 
+const generateIdempotencyKey = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+    }
+
+    return `dash_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+};
+
 export default function DashboardPage() {
     const [balanceCredits, setBalanceCredits] = useState<number>(0);
     const [transactions, setTransactions] = useState<any[]>([]);
@@ -78,9 +86,13 @@ export default function DashboardPage() {
         }
 
         const amountCredits = Math.round(numeric * 100);
+        const idempotencyKey = generateIdempotencyKey();
         const res = await fetch("/api/topup/mock", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "Idempotency-Key": idempotencyKey,
+            },
             body: JSON.stringify({ userId, amount_credits: amountCredits }),
         });
 

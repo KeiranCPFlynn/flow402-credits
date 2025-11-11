@@ -13,6 +13,8 @@ Run `supabase/migrations/20251109-mvp-03-multi-tenant-credits.sql` inside the Su
 
 Point both `FLOW402_TENANT_ID` and `NEXT_PUBLIC_FLOW402_TENANT_ID` at the tenant row you plan to use (the seeded `demo` UUID works out of the box).
 
+For MVP-06, execute `supabase/migrations/20250112-mvp-06-idempotency.sql` to provision the shared `idempotency_keys` table that API routes use to replay responses when the same `Idempotency-Key` and request body appear within 24 hours.
+
 ## Tables
 
 | Table | Purpose | Important Columns |
@@ -22,6 +24,7 @@ Point both `FLOW402_TENANT_ID` and `NEXT_PUBLIC_FLOW402_TENANT_ID` at the tenant
 | `vendor_user_settings` | JSONB bag for per-user preferences exposed to gateway/business logic. | `vendor_id`, `user_id`, `settings`. |
 | `credits` | Current credit balance per `(tenant_id, user_id)`. | `tenant_id` (FK → `tenants.id`), `user_id`, `balance_cents`, `currency` (defaults to `USDC`). |
 | `tx_ledger` | Immutable record of every credit mutation for auditing/idempotency. | `tenant_id`, `user_id`, `kind` (`topup`, `deduct`, `manual_reset`, `adjustment`), `amount_cents`, `ref`, `metadata`, `created_at`. |
+| `idempotency_keys` | Replay metadata keyed by `Idempotency-Key` headers so retries are safe across replicas. | `id`, `method`, `path`, `body_sha`, `response_status`, `response_body`, `created_at`. |
 
 Bitemporal auditing is possible by combining `tx_ledger` rows with the running balance in `credits`. Unique index `(tenant_id, ref)` prevents duplicate ledger entries and powers idempotent RPC calls.
 

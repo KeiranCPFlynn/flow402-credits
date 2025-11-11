@@ -24,6 +24,7 @@ Freezing the minimum viable product contract between a Flow402-enabled vendor AP
 | `x-f402-key` | Vendor → Flow402 | ✅ | Vendor API key/slug/ID used to resolve the `tenants` row + signing secret. |
 | `x-f402-body-sha` | Vendor → Flow402 | ✅ | Lowercase SHA-256 hash of the exact JSON body forwarded to Flow402. Prevents silent body tampering. |
 | `x-f402-sig` / `X-Flow402-Signature` | Vendor ↔ Flow402 | ✅ | HMAC-SHA256 signature described below. Flow402 validates this header on incoming deduction requests, and includes a fresh signature on 200/402 responses so the vendor can verify authenticity. |
+| `Idempotency-Key` | Vendor → Flow402 | ✅ (write) | Deterministic UUID/string tied to the request body. Replays with the same body + key in the last 24h return the original response without touching the ledger. |
 
 ## Deduct Request (Vendor → Flow402)
 
@@ -33,7 +34,7 @@ Freezing the minimum viable product contract between a Flow402-enabled vendor AP
 | Field | Type | Description |
 | --- | --- | --- |
 | `userId` | UUID string | Value from `x-user-id`. |
-| `ref` | string | Idempotency key. Vendor demo uses `sha256(userId|path|day)` truncated to 32 chars (`buildRef`). |
+| `ref` | string | Ledger idempotency reference recorded in `tx_ledger`. Vendor demo uses `sha256(userId|path|day)` truncated to 32 chars (`buildRef`) and also mirrors it into `Idempotency-Key`. |
 | `amount_credits` | integer | Credits to reserve/deduct (unit described above). |
 
 - **Successful response** (`200 OK`):
@@ -102,6 +103,7 @@ The same routine applies to responses: read the header, rebuild `input` with the
 ## Implementation Notes
 
 - The vendor demo (`apps/vendor-demo`) now signs every deduction request with `x-f402-key`, `x-f402-body-sha`, and `x-f402-sig`; the gateway enforces the same ±5 minute skew window before processing credits.
+- Dashboard-driven credit grants (e.g., `/api/topup/mock`) also require `Idempotency-Key` so retries don't grant duplicate credits.
 - The credits unit, headers, and 402 envelope described above already match the live demo implementations, so wiring in HMAC should be additive and non-breaking.
 
 ## References
@@ -109,3 +111,4 @@ The same routine applies to responses: read the header, rebuild `input` with the
 - Gateway logic: `apps/web/src/app/api/gateway/deduct/route.ts`
 - Vendor middleware: `apps/vendor-demo/src/index.ts`
 - Agent example: `packages/agent/src/index.ts`
+- **Idempotency**: Vendors must send a stable `Idempotency-Key` header for each charge attempt. Flow402 stores the response for 24 hours keyed by `{method, path, body_sha}` and replays it across app replicas instead of issuing duplicate ledger writes.

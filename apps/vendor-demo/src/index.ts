@@ -87,6 +87,7 @@ function x402(priceCredits: number) {
         }
 
         const ref = buildRef(userId, req.path);
+        const idempotencyKey = ref;
         log(`➡️ Checking credit for ${userId} @ ${ref}`);
 
         if (debugFlag) {
@@ -107,10 +108,14 @@ function x402(priceCredits: number) {
                 ref,
                 amount_credits: priceCredits,
             });
+            const gatewayHeaders = {
+                ...buildSignatureHeaders(gatewayBody),
+                "Idempotency-Key": idempotencyKey,
+            };
 
             r = await fetchFn(GATEWAY_DEDUCT_URL, {
                 method: "POST",
-                headers: buildSignatureHeaders(gatewayBody),
+                headers: gatewayHeaders,
                 body: gatewayBody,
             });
         } catch (err) {
