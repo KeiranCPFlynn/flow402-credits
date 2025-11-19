@@ -1,13 +1,26 @@
 import type { NextConfig } from "next";
 import { config } from "dotenv";
-import { resolve } from "path";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
-// ✅ Load the shared .env from the monorepo root
-config({ path: resolve(__dirname, "../../.env") });
+const loadEnv = (relativePath: string, override = false) => {
+  const absolutePath = resolve(__dirname, relativePath);
+  if (existsSync(absolutePath)) {
+    config({ path: absolutePath, override });
+  }
+};
+
+// Load shared + local env files, then optional chain-specific overrides
+loadEnv("../../.env");
+loadEnv(".env.local", true);
+
+const extraEnvFile = process.env.FLOW402_ENV_FILE;
+if (extraEnvFile) {
+  loadEnv(extraEnvFile, true);
+}
 
 const nextConfig: NextConfig = {
-  reactCompiler: true, // your existing flag
-  // You can add other Next.js options here if needed
+  reactCompiler: true,
 };
 
 export default nextConfig;

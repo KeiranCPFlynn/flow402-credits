@@ -18,6 +18,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const autoTopupCredits = Number(process.env.DEMO_TOPUP_CREDITS ?? 500);
 const tenantId = process.env.FLOW402_TENANT_ID;
+const treasuryAutoTopupEnabled = process.env.AUTO_TOPUP_ENABLED === "true";
 
 type VendorCall = {
     status: number;
@@ -122,6 +123,22 @@ export async function POST(request: Request) {
 
         if (firstCall.status === 402) {
             traceStep("[Next] Auto top-up triggered after 402 response");
+
+            if (treasuryAutoTopupEnabled) {
+                traceStep("[Next] Treasury auto top-up enabled; instructing client to deposit");
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        status: firstCall.status,
+                        body: firstCall.body,
+                        logs: [...trace, ...firstCall.logs],
+                        auto_topup_required: true,
+                        auto_topup_amount_credits: autoTopupCredits,
+                    },
+                    { status: firstCall.status }
+                );
+            }
+
             try {
                 await dal.incrementBalance({
                     vendorId: scopedTenantId,

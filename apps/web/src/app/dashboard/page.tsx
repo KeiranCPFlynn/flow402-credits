@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { useAccount, useConnect } from "wagmi";
+import type { Address } from "viem";
+import { approveUSDC, checkAllowance, depositFor } from "@/lib/treasury-actions";
+import { VENDOR_ADDRESS } from "@/lib/treasury";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -24,7 +28,27 @@ const generateIdempotencyKey = () => {
     return `dash_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
+const AUTO_TOPUP_ENABLED = process.env.NEXT_PUBLIC_AUTO_TOPUP_ENABLED === "true";
+const AUTO_TOPUP_DEFAULT_CREDITS = Math.max(
+    1,
+    Math.round(Number(process.env.NEXT_PUBLIC_AUTO_TOPUP_CREDITS ?? "500"))
+);
+const AUTO_TOPUP_MAX_CREDITS = Math.max(
+    0,
+    Math.floor(Number(process.env.NEXT_PUBLIC_AUTO_TOPUP_MAX_USDC ?? "25") * 100)
+);
+const AUTO_TOPUP_SPENDING_MULTIPLIER = Math.max(
+    1,
+    Math.floor(Number(process.env.NEXT_PUBLIC_AUTO_TOPUP_SPENDING_LIMIT_MULTIPLIER ?? "10"))
+);
+const VENDOR_ONCHAIN_ADDRESS = VENDOR_ADDRESS as Address;
+
+const creditsToUsdcUnits = (credits: number) => BigInt(Math.round(credits)) * 10_000n;
+const formatUsdFromCredits = (credits: number) => (credits / 100).toFixed(2);
+
 export default function DashboardPage() {
+    const { address, isConnected } = useAccount();
+    const { connect, connectors, status: connectStatus } = useConnect();
     const [balanceCredits, setBalanceCredits] = useState<number>(0);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [amountUsd, setAmountUsd] = useState<string>("5");
@@ -37,9 +61,15 @@ export default function DashboardPage() {
         body: unknown;
         logs: string[];
     } | null>(null);
+    const [autoTopupSpentCredits, setAutoTopupSpentCredits] = useState(0);
+    const [autoTopupPending, setAutoTopupPending] = useState(false);
+    const [autoTopupError, setAutoTopupError] = useState<string | null>(null);
     const userId = defaultUserId;
+    const autoTopupRemainingCredits = Math.max(0, AUTO_TOPUP_MAX_CREDITS - autoTopupSpentCredits);
+    const autoTopupRemainingUsd = formatUsdFromCredits(autoTopupRemainingCredits);
+    const autoTopupDefaultUsd = formatUsdFromCredits(AUTO_TOPUP_DEFAULT_CREDITS);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         const { data: balanceData, error: balanceError } = await supabase
             .from("credits")
             .select("balance_cents")
@@ -71,11 +101,120 @@ export default function DashboardPage() {
 
         setBalanceCredits(latestBalance);
         setTransactions(normalizedTransactions);
-    };
+    }, [userId]);
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [fetchData]);
+
+    const handleConnectWallet = async () => {
+        if (!connectors.length) {
+            setAutoTopupError("No wallet connectors available");
+            return;
+        }
+
+        setAutoTopupError(null);
+        try {
+            await connect({ connector: connectors[0] });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setAutoTopupError(`Wallet connection failed: ${message}`);
+        }
+    };
+
+    const runTreasuryAutoTopup = useCallback(
+        async (requestedCredits?: number) => {
+            if (!AUTO_TOPUP_ENABLED) return false;
+
+            const desiredCredits = Math.max(
+                1,
+                Math.round(requestedCredits ?? AUTO_TOPUP_DEFAULT_CREDITS)
+            );
+            const remaining = Math.max(0, AUTO_TOPUP_MAX_CREDITS - autoTopupSpentCredits);
+            if (remaining <= 0) {
+                setAutoTopupError(
+                    `Auto top-up session cap ($${formatUsdFromCredits(
+                        AUTO_TOPUP_MAX_CREDITS
+                    )} USD) reached`
+                );
+                return false;
+            }
+
+            const creditsToUse = Math.min(desiredCredits, remaining);
+            setAutoTopupPending(true);
+            setAutoTopupError(null);
+
+            try {
+                if (!isConnected) {
+                    if (!connectors.length) {
+                        throw new Error("No wallet connectors available");
+                    }
+                    await connect({ connector: connectors[0] });
+                }
+
+                if (!address) {
+                    throw new Error("Connect a wallet to enable auto top-up");
+                }
+
+                const walletAddress = address as Address;
+                const amount = creditsToUsdcUnits(creditsToUse);
+                const spendingLimit = amount * BigInt(AUTO_TOPUP_SPENDING_MULTIPLIER);
+                const currentAllowance = await checkAllowance(walletAddress);
+
+                if (currentAllowance < spendingLimit) {
+                    await approveUSDC(spendingLimit);
+                }
+
+                const txHash = await depositFor(VENDOR_ONCHAIN_ADDRESS, amount, spendingLimit);
+                const mintResponse = await fetch("/api/topup/credit", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ tx: txHash, userId }),
+                });
+                const mintJson = await mintResponse.json();
+                if (!mintResponse.ok || !mintJson.ok) {
+                    throw new Error(
+                        typeof mintJson.error === "string"
+                            ? mintJson.error
+                            : "Unable to mint credits after deposit"
+                    );
+                }
+
+                setAutoTopupSpentCredits((prev) => prev + creditsToUse);
+                setActionMessage(
+                    `Auto top-up minted ${creditsToUse.toLocaleString()} credits (~$${formatUsdFromCredits(
+                        creditsToUse
+                    )} USD)`
+                );
+                await fetchData();
+                return true;
+            } catch (error) {
+                setAutoTopupError(error instanceof Error ? error.message : String(error));
+                return false;
+            } finally {
+                setAutoTopupPending(false);
+            }
+        },
+        [
+            address,
+            connect,
+            connectors,
+            fetchData,
+            isConnected,
+            userId,
+            autoTopupSpentCredits,
+        ]
+    );
+
+    const callChargeRoute = useCallback(async () => {
+        const res = await fetch("/api/demo/charge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId }),
+        });
+        const json = await res.json();
+        return { res, json };
+    }, [userId]);
 
     const handleTopup = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -144,26 +283,40 @@ export default function DashboardPage() {
         setIsCharging(true);
         setChargeResult(null);
         setActionMessage(null);
+        setAutoTopupError(null);
 
         try {
-            const res = await fetch("/api/demo/charge", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId }),
-            });
-            const json = await res.json();
+            let attempt = await callChargeRoute();
+
+            if (
+                AUTO_TOPUP_ENABLED &&
+                attempt.res.status === 402 &&
+                attempt.json?.auto_topup_required
+            ) {
+                const requestedCredits =
+                    typeof attempt.json.auto_topup_amount_credits === "number"
+                        ? attempt.json.auto_topup_amount_credits
+                        : undefined;
+
+                const autoTopupSucceeded = await runTreasuryAutoTopup(requestedCredits);
+                if (autoTopupSucceeded) {
+                    attempt = await callChargeRoute();
+                }
+            }
 
             setChargeResult({
-                status: json.status ?? res.status,
-                ok: json.ok ?? res.ok,
-                body: json.body ?? null,
-                logs: Array.isArray(json.logs) ? json.logs : [],
+                status: attempt.json.status ?? attempt.res.status,
+                ok: attempt.json.ok ?? attempt.res.ok,
+                body: attempt.json.body ?? null,
+                logs: Array.isArray(attempt.json.logs) ? attempt.json.logs : [],
             });
 
-            if (!res.ok) {
-                console.error("Charge simulation failed", json);
-                if (json.error === "auto_topup_failed") {
+            if (!attempt.res.ok) {
+                console.error("Charge simulation failed", attempt.json);
+                if (attempt.json.error === "auto_topup_failed") {
                     alert("Auto top-up failed. Check Supabase credentials.");
+                } else if (AUTO_TOPUP_ENABLED && attempt.json.auto_topup_required) {
+                    alert("Auto top-up did not complete. Check the wallet connection and try again.");
                 } else {
                     alert("Charge simulation failed");
                 }
@@ -172,7 +325,7 @@ export default function DashboardPage() {
 
             await fetchData();
         } catch (err) {
-            console.error("Charge simulation error", err);
+            console.error("Charge simulation error:", err);
             alert("Charge simulation failed");
         } finally {
             setIsCharging(false);
@@ -192,6 +345,79 @@ export default function DashboardPage() {
                     credits before the vendor responds. Customers pay in USDC (or fiat later) and receive
                     credits instantly.
                 </p>
+
+                {AUTO_TOPUP_ENABLED && (
+                    <div className="bg-white shadow-md rounded-2xl p-6 mb-6">
+                        <h2 className="text-xl font-semibold text-gray-700 mb-2">Auto Top-up (beta)</h2>
+                        <p className="text-sm text-gray-600 mb-4">
+                            When the vendor returns HTTP 402, the dashboard will try to deposit{" "}
+                            {AUTO_TOPUP_DEFAULT_CREDITS.toLocaleString()} credits (~${autoTopupDefaultUsd} USD)
+                            through the Treasury (using your connected wallet) before retrying.
+                        </p>
+
+                        <dl className="space-y-2 text-sm mb-4">
+                            <div className="flex justify-between gap-2">
+                                <dt className="text-gray-500">Wallet</dt>
+                                <dd className="font-mono text-xs text-gray-800">
+                                    {address ?? "Not connected"}
+                                </dd>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                                <dt className="text-gray-500">Session cap</dt>
+                                <dd className="text-gray-900">
+                                    {AUTO_TOPUP_MAX_CREDITS.toLocaleString()} credits (~$
+                                    {formatUsdFromCredits(AUTO_TOPUP_MAX_CREDITS)} USD)
+                                </dd>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                                <dt className="text-gray-500">Remaining this session</dt>
+                                <dd className="text-gray-900">
+                                    {autoTopupRemainingCredits.toLocaleString()} credits (~${autoTopupRemainingUsd} USD)
+                                </dd>
+                            </div>
+                        </dl>
+
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={handleConnectWallet}
+                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                disabled={connectStatus === "pending"}
+                            >
+                                {connectStatus === "pending"
+                                    ? "Connecting..."
+                                    : isConnected
+                                    ? "Reconnect Wallet"
+                                    : "Connect Wallet"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => runTreasuryAutoTopup()}
+                                className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-900 disabled:opacity-60"
+                                disabled={autoTopupPending}
+                            >
+                                {autoTopupPending
+                                    ? "Auto top-up in progress..."
+                                    : `Mint ${AUTO_TOPUP_DEFAULT_CREDITS.toLocaleString()} credits now`}
+                            </button>
+                        </div>
+
+                        {autoTopupError && (
+                            <p className="mt-3 text-sm text-red-600">{autoTopupError}</p>
+                        )}
+
+                        <p className="mt-3 text-xs text-gray-500">
+                            Need to increase your allowance or spending limit? Open{" "}
+                            <a
+                                className="underline"
+                                href={`/approve?amount=${(AUTO_TOPUP_DEFAULT_CREDITS / 100).toFixed(2)}&userId=${userId}`}
+                            >
+                                /approve
+                            </a>{" "}
+                            in another tab to re-run the wallet setup.
+                        </p>
+                    </div>
+                )}
 
                 <div className="bg-white shadow-md rounded-2xl p-6 mb-6">
                     <h2 className="text-xl font-semibold text-gray-700 mb-2">Current Balance</h2>
