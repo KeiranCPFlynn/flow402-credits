@@ -4,16 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:fork": "FLOW402_ENV_FILE=.env.base-fork next dev",
     "build": "next build",
     "start": "next start",
     "test": "tsc -p tsconfig.test.json && node --test dist-tests/**/*.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",
+    "@tanstack/react-query": "^5.90.8",
     "dotenv": "^17.2.3",
     "next": "16.0.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "viem": "^2.39.0",
+    "wagmi": "^2.19.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {

@@ -219,7 +219,7 @@ begin
         alter table public.tx_ledger
             add constraint tx_ledger_kind_check
                 check (
-                    kind in ('topup', 'deduct', 'manual_reset', 'adjustment')
+                    kind in ('topup', 'credit', 'deduct', 'manual_reset', 'adjustment')
                 );
     end if;
 end$$;

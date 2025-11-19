@@ -35,12 +35,24 @@ DEMO_USER_ID=9c0383a1-0887-4c0f-98ca-cb71ffc4e76c
 NEXT_PUBLIC_DEMO_USER_ID=9c0383a1-0887-4c0f-98ca-cb71ffc4e76c
 GATEWAY_DEDUCT_URL=http://localhost:3000/api/gateway/deduct
 DEMO_TOPUP_CREDITS=500
+AUTO_TOPUP_ENABLED=false
+NEXT_PUBLIC_AUTO_TOPUP_ENABLED=false
+NEXT_PUBLIC_AUTO_TOPUP_CREDITS=500
+NEXT_PUBLIC_AUTO_TOPUP_MAX_USDC=25
+NEXT_PUBLIC_AUTO_TOPUP_SPENDING_LIMIT_MULTIPLIER=10
 ```
 
 - The web app reads the Supabase credentials, the optional `DEMO_USER_ID`, and `VENDOR_DEMO_URL` for the simulation button (falling back to `VENDOR_DEMO_URL_LOCAL` when running locally).
 - `FLOW402_TENANT_ID` (mirrored to `NEXT_PUBLIC_FLOW402_TENANT_ID`) scopes the Supabase `credits` + `tx_ledger` tables to the correct vendor project.
 - `FLOW402_VENDOR_KEY` / `FLOW402_SIGNING_SECRET` come from the `tenants` row in Supabase and are used to HMAC-sign vendor → gateway requests.
 - The vendor demo needs `GATEWAY_DEDUCT_URL` so it knows where to send credit checks.
+- Leave `AUTO_TOPUP_ENABLED` / `NEXT_PUBLIC_AUTO_TOPUP_ENABLED` set to `false` to keep the mock Supabase refill, or flip them to `true` (plus tweak the other `NEXT_PUBLIC_AUTO_TOPUP_*` knobs) when you want the dashboard to drive real Treasury deposits after seeing a 402.
+
+### Base Sepolia Fork Testing
+
+1. In the `flow402-escrow` repo, run the fork helpers (`./script/start-base-fork.sh` then `./script/base-fork-cycle.sh`). They mint contracts on the fork and write `packages/contracts/deployment.base-fork.json` plus `apps/web/.env.base-fork` inside this repo.  
+2. Start the dashboard against the fork with `pnpm --filter web dev:fork`. That script sets `FLOW402_ENV_FILE=.env.base-fork`, so the Next config loads `.env.base-fork` after the shared `.env` + `.env.local` and flips `NEXT_PUBLIC_CHAIN_ENV=base-fork`.  
+3. Wallet + API routes automatically read addresses/RPC from `deployment.base-fork.json`, so both client and server calls hit the forked node at `http://127.0.0.1:8545`. Run `pnpm --filter web dev` again to jump back to the local Anvil network.  
 
 ## Demo Flow
 
