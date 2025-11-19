@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, parseEventLogs } from "viem";
 import { baseSepolia } from "viem/chains";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { anvil } from "@/lib/chain-local";
-import { DEPLOYMENT_RPC_URL, TREASURY_ABI, TREASURY_ADDRESS } from "@/lib/treasury";
+import { flow402TreasuryAbi } from "@/lib/abi/Flow402Treasury";
+import { DEPLOYMENT_RPC_URL, TREASURY_ADDRESS } from "@/lib/treasury";
 
 const tenantId = process.env.FLOW402_TENANT_ID;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -90,7 +91,7 @@ async function handleRequest(req: NextRequest) {
         }
 
         const logs = parseEventLogs({
-            abi: TREASURY_ABI,
+            abi: flow402TreasuryAbi,
             logs: receipt.logs,
             eventName: "UserDeposit",
         });
@@ -99,8 +100,13 @@ async function handleRequest(req: NextRequest) {
             return NextResponse.json({ ok: false, error: "user_deposit_missing" }, { status: 400 });
         }
 
-        const depositLog = logs[0];
-        const netAmount = depositLog.args?.netAmount as bigint | undefined;
+        type UserDepositEvent = {
+            args?: {
+                netAmount?: bigint;
+            };
+        };
+        const depositLog = logs[0] as UserDepositEvent;
+        const netAmount = depositLog.args?.netAmount;
 
         if (!netAmount || netAmount <= 0n) {
             return NextResponse.json({ ok: false, error: "invalid_net_amount" }, { status: 400 });
@@ -170,7 +176,7 @@ type CreditMutationResult =
     | { status: "error" };
 
 interface CreditMutationInput {
-    supabase: ReturnType<typeof createClient>;
+    supabase: SupabaseClient<any, any, any, any, any>;
     tenantId: string;
     userId: string;
     credits: number;
