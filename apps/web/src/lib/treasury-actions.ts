@@ -8,13 +8,15 @@ import { wagmiConfig } from "./wagmi";
 const treasuryAddress = TREASURY_ADDRESS as Address;
 const usdcAddress = USDC_ADDRESS as Address;
 
-export async function checkAllowance(owner: Address) {
-    return readContract(wagmiConfig, {
+export async function checkAllowance(owner: Address): Promise<bigint> {
+    const value = await readContract(wagmiConfig, {
         address: usdcAddress,
         abi: USDC_ABI,
         functionName: "allowance",
         args: [owner, treasuryAddress],
     });
+
+    return value as bigint;
 }
 
 export async function approveUSDC(amount: bigint) {
